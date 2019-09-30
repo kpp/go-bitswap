@@ -82,6 +82,22 @@ func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
 	}
 }
 
+// Envelope contains a message for a Peer to collect stats
+type StatsEnvelope struct {
+	// Peer is the intended recipient.
+	Peer peer.ID
+
+	// Message is the payload.
+	Message bsmsg.BitSwapMessage
+}
+
+// SetStatsEnvelopeCh sets a channel to send stat envelopes to
+func SetStatsEnvelopeCh(ch chan<- StatsEnvelope) Option {
+	return func(bs *Bitswap) {
+		bs.statsEnvelopeCh = ch
+	}
+}
+
 // New initializes a BitSwap instance that communicates over the provided
 // BitSwapNetwork. This function registers the returned instance as the network
 // delegate. Runs until context is cancelled or bitswap.Close is called.
@@ -212,6 +228,9 @@ type Bitswap struct {
 	dupMetric     metrics.Histogram
 	allMetric     metrics.Histogram
 	sentHistogram metrics.Histogram
+
+	// statsEnvelopeCh contains outgoing messages to collect stats
+	statsEnvelopeCh chan<- StatsEnvelope
 
 	// the sessionmanager manages tracking sessions
 	sm *bssm.SessionManager
@@ -375,6 +394,8 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg
 	bs.engine.MessageReceived(p, incoming)
 	// TODO: this is bad, and could be easily abused.
 	// Should only track *useful* messages in ledger
+
+	bs.statsEnvelopeCh <- StatsEnvelope { Peer : p, Message : incoming, }
 
 	iblocks := incoming.Blocks()
 
